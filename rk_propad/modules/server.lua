@@ -41,7 +41,7 @@ end)
 -- Callback to remove items after successful key programming
 lib.callback.register('rk_propad:removeItems', function(source)
     local success = true
-    
+
     -- Remove USB device
     local usbRemoved = pcall(function()
         local hasUSB = exports.ox_inventory:Search(source, 'count', 'usb_device')
@@ -50,12 +50,12 @@ lib.callback.register('rk_propad:removeItems', function(source)
         end
         return false
     end)
-    
+
     if not usbRemoved then
         success = false
         print(("^1[rk_propad]^7 Failed to remove USB from player %s"):format(source))
     end
-    
+
     -- Remove empty keyfob
     local keyfobRemoved = pcall(function()
         local hasKeyfob = exports.ox_inventory:Search(source, 'count', 'empty_keyfob')
@@ -64,17 +64,57 @@ lib.callback.register('rk_propad:removeItems', function(source)
         end
         return false
     end)
-    
+
     if not keyfobRemoved then
         success = false
         print(("^1[rk_propad]^7 Failed to remove keyfob from player %s"):format(source))
     end
-    
+
     if success and config.DebugVehicleKeys then
         print(("^2[rk_propad]^7 Successfully removed items from player %s"):format(source))
     end
-    
+
     return success
+end)
+
+-- Callback to transfer vehicle ownership
+lib.callback.register('rk_propad:transferOwnership', function(source, plate)
+    if not plate then
+        print(("^1[rk_propad]^7 Invalid plate provided for ownership transfer"):format())
+        return false
+    end
+
+    if config.DebugVehicleKeys then
+        print(("^5[rk_propad]^7 Attempting to transfer ownership of vehicle [%s] to player %s"):format(plate, source))
+    end
+
+    -- Check if TransferVehicleOwnership function exists (from bridge file)
+    if TransferVehicleOwnership then
+        return TransferVehicleOwnership(source, plate)
+    else
+        print("^1[rk_propad]^7 TransferVehicleOwnership function not found. Make sure mk_vehiclekeys bridge is loaded.")
+        return false
+    end
+end)
+
+-- Callback to delete vehicle ownership
+lib.callback.register('rk_propad:deleteOwnership', function(source, plate)
+    if not plate then
+        print(("^1[rk_propad]^7 Invalid plate provided for ownership deletion"):format())
+        return false
+    end
+
+    if config.DebugVehicleKeys then
+        print(("^5[rk_propad]^7 Attempting to delete ownership of vehicle [%s]"):format(plate))
+    end
+
+    -- Check if DeleteVehicleOwnership function exists (from bridge file)
+    if DeleteVehicleOwnership then
+        return DeleteVehicleOwnership(plate)
+    else
+        print("^1[rk_propad]^7 DeleteVehicleOwnership function not found. Make sure mk_vehiclekeys bridge is loaded.")
+        return false
+    end
 end)
 
 print("^2[rk_propad]^7 Server callbacks registered successfully")

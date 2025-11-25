@@ -179,7 +179,7 @@ end)
 -- NUI Callback: Program key
 nui:cb("programKey", function(data, cb)
     local vehicle = GetVehiclePedIsIn(cache.ped, false)
-    
+
     if not vehicle or vehicle == 0 then
         config.Notify(Locale("title_error"), Locale("error_program_key"), "error")
         cb({ success = false })
@@ -188,34 +188,50 @@ nui:cb("programKey", function(data, cb)
 
     local plate = GetVehicleNumberPlateText(vehicle)
     local vehicleName = GetDisplayNameFromVehicleModel(GetEntityModel(vehicle))
-    
+
     -- Debug logging
     if config.DebugVehicleKeys then
         print(("^5[rk_propad]^7 Programming keys for vehicle: %s [%s]"):format(vehicleName, plate))
     end
 
     local success = GiveVehKeys(vehicle)
-    
+
     if success then
         -- Remove items
         lib.callback.await("rk_propad:removeItems", false)
-        
+
+        -- Transfer vehicle ownership if DeleteAndAdd is enabled
+        if config.DeleteAndAdd and hasKeySystem then
+            local transferSuccess = lib.callback.await("rk_propad:transferOwnership", false, plate)
+            if transferSuccess and config.DebugVehicleKeys then
+                print(("^2[rk_propad]^7 Successfully transferred ownership of vehicle [%s]"):format(plate))
+            end
+        end
+
         -- Show appropriate notification
         if hasKeySystem then
-            config.Notify(Locale("title_success"), Locale("success_key_programmed"), "success")
+            if config.DeleteAndAdd then
+                config.Notify(
+                    Locale("title_success"),
+                    Locale("success_key_programmed") .. "\nVehicle ownership transferred!",
+                    "success"
+                )
+            else
+                config.Notify(Locale("title_success"), Locale("success_key_programmed"), "success")
+            end
         else
             config.Notify(
-                "✓ Vehicle Programmed", 
+                "✓ Vehicle Programmed",
                 string.format(
                     "Vehicle %s [%s] is now ready to drive!\n" ..
                     "Engine started automatically (No key system detected)",
-                    vehicleName, 
+                    vehicleName,
                     plate
-                ), 
+                ),
                 "success"
             )
         end
-        
+
         -- Make sure engine stays on in auto-start mode
         if not hasKeySystem then
             CreateThread(function()
@@ -225,7 +241,7 @@ nui:cb("programKey", function(data, cb)
                 end
             end)
         end
-        
+
         cb({ success = true })
     else
         print("^1[rk_propad]^7 Failed to give keys")
@@ -237,7 +253,7 @@ end)
 -- NUI Callback: Erase keys
 nui:cb("eraseKeys", function(data, cb)
     local vehicle = GetVehiclePedIsIn(cache.ped, false)
-    
+
     if not vehicle or vehicle == 0 then
         config.Notify(Locale("title_error"), Locale("error_erase_keys"), "error")
         cb({ success = false })
@@ -253,23 +269,39 @@ nui:cb("eraseKeys", function(data, cb)
     end
 
     TriggerServerEvent("rk_propad:eraseAllKeys", NetworkGetNetworkIdFromEntity(vehicle))
-    
+
+    -- Delete vehicle ownership if DeleteAndAdd is enabled
+    if config.DeleteAndAdd and hasKeySystem then
+        local deleteSuccess = lib.callback.await("rk_propad:deleteOwnership", false, plate)
+        if deleteSuccess and config.DebugVehicleKeys then
+            print(("^2[rk_propad]^7 Successfully deleted ownership of vehicle [%s]"):format(plate))
+        end
+    end
+
     -- Show appropriate notification
     if hasKeySystem then
-        config.Notify(Locale("title_success"), Locale("success_keys_erased"), "success")
+        if config.DeleteAndAdd then
+            config.Notify(
+                Locale("title_success"),
+                Locale("success_keys_erased") .. "\nVehicle ownership removed!",
+                "success"
+            )
+        else
+            config.Notify(Locale("title_success"), Locale("success_keys_erased"), "success")
+        end
     else
         config.Notify(
-            "✓ Keys Erased", 
+            "✓ Keys Erased",
             string.format(
                 "Vehicle %s [%s] access removed!\n" ..
                 "Engine turned off (No key system detected)",
-                vehicleName, 
+                vehicleName,
                 plate
-            ), 
+            ),
             "success"
         )
     end
-    
+
     cb({ success = true })
 end)
 
