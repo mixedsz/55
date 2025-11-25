@@ -119,6 +119,21 @@ end)
 
 print("^2[rk_propad]^7 Server callbacks registered successfully")
 
+-- Bridge function availability check
+CreateThread(function()
+    Wait(500) -- Wait for bridges to fully load
+    print("^5[rk_propad]^7 Checking bridge function availability:")
+    print(("^5[rk_propad]^7   TransferVehicleOwnership: %s"):format(TransferVehicleOwnership and "^2✓ Available^7" or "^1✗ Not found^7"))
+    print(("^5[rk_propad]^7   DeleteVehicleOwnership: %s"):format(DeleteVehicleOwnership and "^2✓ Available^7" or "^1✗ Not found^7"))
+
+    if not TransferVehicleOwnership or not DeleteVehicleOwnership then
+        print("^3[rk_propad]^7 Some ownership functions are missing. Possible reasons:")
+        print("^3[rk_propad]^7   1. mk_vehiclekeys or mk_utils is not started")
+        print("^3[rk_propad]^7   2. Bridge file failed to load due to resource state")
+        print("^3[rk_propad]^7   3. DeleteAndAdd config option may be disabled")
+    end
+end)
+
 -- ═══════════════════════════════════════════════════════
 --                    EVENTS
 -- ═══════════════════════════════════════════════════════
