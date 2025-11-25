@@ -22,6 +22,8 @@ shared_scripts {
 }
 
 server_scripts {
+    '@oxmysql/lib/MySQL.lua',
+    'modules/bridge/server/vehiclekeys/*.lua',
     'modules/server.lua',
 }
 

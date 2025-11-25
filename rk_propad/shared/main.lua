@@ -192,6 +192,8 @@ return {
         diagnostics = true -- Enable/disable vehicle diagnostics tab
     },
 
+    DeleteAndAdd = true, -- When true, programming a new key will transfer vehicle ownership from previous owner to the new player in owned_vehicles table
+
     Notify = function(title, message, type)
         lib.notify({
             title = title,
