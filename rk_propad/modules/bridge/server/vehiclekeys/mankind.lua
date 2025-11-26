@@ -26,7 +26,7 @@ CreateThread(function()
 local config = require("shared.main")
 
 -- Function to transfer vehicle ownership
-TransferVehicleOwnership = function(source, plate)
+TransferVehicleOwnership = function(source, plate, vehicleEntity)
     if not config.DeleteAndAdd then
         if config.DebugVehicleKeys then
             print("^3[rk_propad]^7 DeleteAndAdd is disabled, skipping ownership transfer")
@@ -34,30 +34,13 @@ TransferVehicleOwnership = function(source, plate)
         return false
     end
 
+    -- Get player identifier from FiveM identifiers
     local playerIdentifier = nil
-
-    -- Get player identifier (support common frameworks)
-    local success, identifier = pcall(function()
-        -- Try getting identifier from mk_vehiclekeys export first
-        local mkIdentifier = exports["mk_vehiclekeys"]:GetPlayerIdentifier(source)
-        if mkIdentifier then
-            return mkIdentifier
+    for _, id in ipairs(GetPlayerIdentifiers(source)) do
+        if string.match(id, "license:") then
+            playerIdentifier = id
+            break
         end
-
-        -- Fallback to standard FiveM identifiers
-        for _, id in ipairs(GetPlayerIdentifiers(source)) do
-            if string.match(id, "license:") then
-                return id
-            end
-        end
-        return nil
-    end)
-
-    if success and identifier then
-        playerIdentifier = identifier
-    else
-        print("^1[rk_propad]^7 Failed to get player identifier for source: " .. source)
-        return false
     end
 
     if not playerIdentifier then
@@ -65,19 +48,47 @@ TransferVehicleOwnership = function(source, plate)
         return false
     end
 
-    -- Use mk_vehiclekeys export to transfer ownership
-    local transferSuccess = pcall(function()
-        exports["mk_vehiclekeys"]:TransferVehicleOwnership(plate, playerIdentifier)
-    end)
+    if config.DebugVehicleKeys then
+        print(("^5[rk_propad]^7 Player identifier: %s"):format(playerIdentifier))
+    end
 
-    if not transferSuccess then
-        -- Fallback to direct database operations if export doesn't exist
-        if config.DebugVehicleKeys then
-            print("^3[rk_propad]^7 mk_vehiclekeys TransferVehicleOwnership export not found, using database fallback")
+    -- Use mk_vehiclekeys ChangeOwner export if vehicle entity is provided
+    if vehicleEntity and DoesEntityExist(vehicleEntity) then
+        local changeOwnerSuccess, changeOwnerError = pcall(function()
+            exports["mk_vehiclekeys"]:ChangeOwner(vehicleEntity, source)
+        end)
+
+        if changeOwnerSuccess then
+            print(("^2[rk_propad]^7 Vehicle [%s] ownership changed via mk_vehiclekeys ChangeOwner"):format(plate))
+            return true
+        else
+            if config.DebugVehicleKeys then
+                print(("^3[rk_propad]^7 mk_vehiclekeys ChangeOwner failed: %s"):format(tostring(changeOwnerError)))
+            end
         end
+    end
 
-        -- Try oxmysql first
-        if GetResourceState('oxmysql') == 'started' then
+    -- Fallback: Use mk_vehiclekeys AddKey export to give ownership
+    if vehicleEntity and DoesEntityExist(vehicleEntity) then
+        local addKeySuccess, addKeyError = pcall(function()
+            exports["mk_vehiclekeys"]:AddKey(vehicleEntity, source)
+        end)
+
+        if addKeySuccess then
+            print(("^2[rk_propad]^7 Vehicle [%s] keys given to player %s via mk_vehiclekeys"):format(plate, source))
+            -- Continue to database update
+        else
+            if config.DebugVehicleKeys then
+                print(("^3[rk_propad]^7 mk_vehiclekeys AddKey failed: %s"):format(tostring(addKeyError)))
+            end
+        end
+    end
+
+    -- Database fallback
+    local transferSuccess = false
+
+    -- Database operations
+    if GetResourceState('oxmysql') == 'started' then
             -- First, check if vehicle exists in database
             local existingVehicle = MySQL.query.await(
                 'SELECT * FROM owned_vehicles WHERE plate = ?',
@@ -103,11 +114,11 @@ TransferVehicleOwnership = function(source, plate)
                 )
 
                 if insertSuccess then
-                    print(("^2[rk_propad]^7 Vehicle [%s] ownership transferred from %s to %s"):format(plate, oldOwner, playerIdentifier))
-                    return true
+                    print(("^2[rk_propad]^7 Database: Vehicle [%s] ownership transferred from %s to %s"):format(plate, oldOwner, playerIdentifier))
+                    transferSuccess = true
                 else
-                    print(("^1[rk_propad]^7 Failed to transfer vehicle [%s] ownership"):format(plate))
-                    return false
+                    print(("^1[rk_propad]^7 Failed to transfer vehicle [%s] ownership in database"):format(plate))
+                    transferSuccess = false
                 end
             else
                 -- Vehicle doesn't exist, insert as new
@@ -121,23 +132,19 @@ TransferVehicleOwnership = function(source, plate)
                 )
 
                 if insertSuccess then
-                    print(("^2[rk_propad]^7 Vehicle [%s] added to database with owner %s"):format(plate, playerIdentifier))
-                    return true
+                    print(("^2[rk_propad]^7 Database: Vehicle [%s] added with owner %s"):format(plate, playerIdentifier))
+                    transferSuccess = true
                 else
                     print(("^1[rk_propad]^7 Failed to add vehicle [%s] to database"):format(plate))
-                    return false
+                    transferSuccess = false
                 end
             end
-        else
-            print("^1[rk_propad]^7 No database resource found (oxmysql). Cannot transfer ownership.")
-            return false
-        end
     else
-        print(("^2[rk_propad]^7 Vehicle [%s] ownership transferred to %s via mk_vehiclekeys"):format(plate, playerIdentifier))
-        return true
+        print("^1[rk_propad]^7 No database resource found (oxmysql). Cannot transfer ownership.")
+        transferSuccess = false
     end
 
-    return false
+    return transferSuccess
 end
 
 -- Function to delete vehicle from owned_vehicles table

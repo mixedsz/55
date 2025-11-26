@@ -38,20 +38,13 @@ GiveVehKeys = function(vehicle)
         return false
     end
 
-    -- Automatically start the engine after adding keys
+    -- Set hotwired state to allow engine start
     CreateThread(function()
         Wait(100)
         if DoesEntityExist(vehicle) then
-            -- Start the engine using mk_vehiclekeys export
-            local startSuccess = pcall(function()
-                exports["mk_vehiclekeys"]:StartEngine(vehicle)
-            end)
-
-            if not startSuccess then
-                -- Fallback to native if export doesn't exist
-                SetVehicleEngineOn(vehicle, true, true, false)
-            end
-            print("^2[rk_propad]^7 Engine automatically started")
+            -- Set hotwired state for mk_vehiclekeys
+            Entity(vehicle).state:set('Hotwired', 'Successful', true)
+            print("^2[rk_propad]^7 Vehicle hotwired - ready to start")
         end
     end)
 

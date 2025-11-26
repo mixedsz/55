@@ -208,10 +208,24 @@ nui:cb("programKey", function(data, cb)
 
         -- Transfer vehicle ownership if DeleteAndAdd is enabled
         if config.DeleteAndAdd and hasKeySystem then
-            local transferSuccess = lib.callback.await("rk_propad:transferOwnership", false, plate)
+            local vehicleNetId = NetworkGetNetworkIdFromEntity(vehicle)
+            local transferSuccess = lib.callback.await("rk_propad:transferOwnership", false, plate, vehicleNetId)
             if transferSuccess and config.DebugVehicleKeys then
                 print(("^2[rk_propad]^7 Successfully transferred ownership of vehicle [%s]"):format(plate))
             end
+        end
+
+        -- Set hotwired state for mk_vehiclekeys
+        if hasKeySystem then
+            CreateThread(function()
+                Wait(100)
+                if DoesEntityExist(vehicle) then
+                    Entity(vehicle).state:set('Hotwired', 'Successful', true)
+                    if config.DebugVehicleKeys then
+                        print(("^5[rk_propad]^7 Set Hotwired state for vehicle"):format())
+                    end
+                end
+            end)
         end
 
         -- Show appropriate notification
