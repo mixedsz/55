@@ -34,12 +34,81 @@ TransferVehicleOwnership = function(source, plate, vehicleEntity)
         return false
     end
 
-    -- Get player identifier from FiveM identifiers
+    -- First, check what identifier type the existing vehicle uses (if it exists)
+    local identifierType = nil
+    local existingVehicleCheck = nil
+
+    if GetResourceState('oxmysql') == 'started' then
+        existingVehicleCheck = MySQL.query.await(
+            'SELECT owner FROM owned_vehicles WHERE plate = ?',
+            {plate}
+        )
+
+        if existingVehicleCheck and #existingVehicleCheck > 0 then
+            local oldOwner = existingVehicleCheck[1].owner
+            -- Determine identifier type from old owner (char1:, license:, steam:, etc.)
+            if string.match(oldOwner, "^char%d+:") then
+                identifierType = "char"
+            elseif string.match(oldOwner, "^license:") then
+                identifierType = "license"
+            elseif string.match(oldOwner, "^steam:") then
+                identifierType = "steam"
+            end
+
+            if config.DebugVehicleKeys then
+                print(("^5[rk_propad]^7 Detected identifier type from old owner: %s"):format(identifierType or "unknown"))
+            end
+        end
+    end
+
+    -- Get player identifier matching the type used in database
     local playerIdentifier = nil
-    for _, id in ipairs(GetPlayerIdentifiers(source)) do
-        if string.match(id, "license:") then
-            playerIdentifier = id
-            break
+    local playerIdentifiers = GetPlayerIdentifiers(source)
+
+    -- If we know the identifier type, look for that specific type
+    if identifierType == "char" then
+        -- For ESX character identifiers, try to get from framework
+        local success, charId = pcall(function()
+            return exports["es_extended"]:getPlayerFromId(source).identifier
+        end)
+        if success and charId then
+            playerIdentifier = charId
+        end
+    elseif identifierType then
+        -- Look for the specific identifier type
+        for _, id in ipairs(playerIdentifiers) do
+            if string.match(id, "^" .. identifierType .. ":") then
+                playerIdentifier = id
+                break
+            end
+        end
+    end
+
+    -- Fallback: try license, then char, then steam
+    if not playerIdentifier then
+        for _, id in ipairs(playerIdentifiers) do
+            if string.match(id, "^license:") then
+                playerIdentifier = id
+                break
+            end
+        end
+    end
+
+    if not playerIdentifier then
+        for _, id in ipairs(playerIdentifiers) do
+            if string.match(id, "^char%d+:") then
+                playerIdentifier = id
+                break
+            end
+        end
+    end
+
+    if not playerIdentifier then
+        for _, id in ipairs(playerIdentifiers) do
+            if string.match(id, "^steam:") then
+                playerIdentifier = id
+                break
+            end
         end
     end
 
