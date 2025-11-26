@@ -65,20 +65,46 @@ TransferVehicleOwnership = function(source, plate, vehicleEntity)
     local playerIdentifier = nil
     local playerIdentifiers = GetPlayerIdentifiers(source)
 
-    -- If we detected char identifier type, search for char identifier FIRST
+    -- If we detected char identifier type, we need to find the player's char ID from database
     if identifierType == "char" then
-        -- Search player identifiers directly for char pattern
+        -- First get the player's license
+        local license = nil
         for _, id in ipairs(playerIdentifiers) do
-            if string.match(id, "^char%d+:") then
-                playerIdentifier = id
-                if config.DebugVehicleKeys then
-                    print(("^5[rk_propad]^7 Found char identifier: %s"):format(playerIdentifier))
-                end
+            if string.match(id, "^license:") then
+                license = id
                 break
             end
         end
 
-        -- If not found, try ESX export as fallback
+        if license and GetResourceState('oxmysql') == 'started' then
+            -- Query database to find the char identifier for this license
+            local charResult = MySQL.query.await(
+                'SELECT identifier FROM users WHERE identifier LIKE ? LIMIT 1',
+                {'char%:' .. string.sub(license, 9)}  -- char1:xxx, char2:xxx with the hash from license
+            )
+
+            if charResult and #charResult > 0 then
+                playerIdentifier = charResult[1].identifier
+                if config.DebugVehicleKeys then
+                    print(("^5[rk_propad]^7 Found char identifier from database: %s"):format(playerIdentifier))
+                end
+            else
+                -- Try alternative: query where license matches in identifiers column
+                charResult = MySQL.query.await(
+                    'SELECT identifier FROM users WHERE JSON_SEARCH(identifiers, "one", ?) IS NOT NULL LIMIT 1',
+                    {license}
+                )
+
+                if charResult and #charResult > 0 then
+                    playerIdentifier = charResult[1].identifier
+                    if config.DebugVehicleKeys then
+                        print(("^5[rk_propad]^7 Found char identifier from users.identifiers: %s"):format(playerIdentifier))
+                    end
+                end
+            end
+        end
+
+        -- If still not found, try ESX export
         if not playerIdentifier and ESX then
             local success, xPlayer = pcall(function()
                 return ESX.GetPlayerFromId(source)
