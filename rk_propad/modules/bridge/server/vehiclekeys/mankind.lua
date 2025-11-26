@@ -1,28 +1,32 @@
 ---@diagnostic disable: duplicate-set-field, lowercase-global
 
--- Check for mk_vehiclekeys or mk_utils (some systems use mk_utils as the main resource)
-local mkResource = nil
-if GetResourceState('mk_vehiclekeys') == 'started' then
-    mkResource = 'mk_vehiclekeys'
-elseif GetResourceState('mk_utils') == 'started' then
-    mkResource = 'mk_utils'
-end
+-- Wait for mk_vehiclekeys to be available (up to 5 seconds)
+CreateThread(function()
+    local maxAttempts = 50
+    local attempt = 0
 
-if not mkResource then
-    if GetResourceState('mk_vehiclekeys') ~= 'missing' or GetResourceState('mk_utils') ~= 'missing' then
-        print("^3[rk_propad]^7 mk_vehiclekeys/mk_utils found but not started. Current states:")
-        print("^3[rk_propad]^7   mk_vehiclekeys: " .. GetResourceState('mk_vehiclekeys'))
-        print("^3[rk_propad]^7   mk_utils: " .. GetResourceState('mk_utils'))
+    while attempt < maxAttempts do
+        if GetResourceState('mk_vehiclekeys') == 'started' then
+            break
+        end
+        attempt = attempt + 1
+        Wait(100)
     end
-    return
-end
 
-print(("^2[rk_propad]^7 Loading %s server bridge..."):format(mkResource))
+    if GetResourceState('mk_vehiclekeys') ~= 'started' then
+        local state = GetResourceState('mk_vehiclekeys')
+        if state ~= 'missing' then
+            print(("^3[rk_propad]^7 mk_vehiclekeys found but not started after 5s. Current state: %s"):format(state))
+        end
+        return
+    end
+
+    print("^2[rk_propad]^7 Loading mk_vehiclekeys server bridge...")
 
 local config = require("shared.main")
 
 -- Function to transfer vehicle ownership
-TransferVehicleOwnership = function(source, plate)
+TransferVehicleOwnership = function(source, plate, vehicleEntity)
     if not config.DeleteAndAdd then
         if config.DebugVehicleKeys then
             print("^3[rk_propad]^7 DeleteAndAdd is disabled, skipping ownership transfer")
@@ -30,30 +34,82 @@ TransferVehicleOwnership = function(source, plate)
         return false
     end
 
-    local playerIdentifier = nil
+    -- First, check what identifier type the existing vehicle uses (if it exists)
+    local identifierType = nil
+    local existingVehicleCheck = nil
 
-    -- Get player identifier (support common frameworks)
-    local success, identifier = pcall(function()
-        -- Try getting identifier from mk_vehiclekeys/mk_utils export first
-        local mkIdentifier = exports[mkResource]:GetPlayerIdentifier(source)
-        if mkIdentifier then
-            return mkIdentifier
-        end
+    if GetResourceState('oxmysql') == 'started' then
+        existingVehicleCheck = MySQL.query.await(
+            'SELECT owner FROM owned_vehicles WHERE plate = ?',
+            {plate}
+        )
 
-        -- Fallback to standard FiveM identifiers
-        for _, id in ipairs(GetPlayerIdentifiers(source)) do
-            if string.match(id, "license:") then
-                return id
+        if existingVehicleCheck and #existingVehicleCheck > 0 then
+            local oldOwner = existingVehicleCheck[1].owner
+            -- Determine identifier type from old owner (char1:, license:, steam:, etc.)
+            if string.match(oldOwner, "^char%d+:") then
+                identifierType = "char"
+            elseif string.match(oldOwner, "^license:") then
+                identifierType = "license"
+            elseif string.match(oldOwner, "^steam:") then
+                identifierType = "steam"
+            end
+
+            if config.DebugVehicleKeys then
+                print(("^5[rk_propad]^7 Detected identifier type from old owner: %s"):format(identifierType or "unknown"))
             end
         end
-        return nil
-    end)
+    end
 
-    if success and identifier then
-        playerIdentifier = identifier
-    else
-        print("^1[rk_propad]^7 Failed to get player identifier for source: " .. source)
-        return false
+    -- Get player identifier matching the type used in database
+    local playerIdentifier = nil
+    local playerIdentifiers = GetPlayerIdentifiers(source)
+
+    -- If we know the identifier type, look for that specific type
+    if identifierType == "char" then
+        -- For ESX character identifiers, try to get from framework
+        local success, charId = pcall(function()
+            return exports["es_extended"]:getPlayerFromId(source).identifier
+        end)
+        if success and charId then
+            playerIdentifier = charId
+        end
+    elseif identifierType then
+        -- Look for the specific identifier type
+        for _, id in ipairs(playerIdentifiers) do
+            if string.match(id, "^" .. identifierType .. ":") then
+                playerIdentifier = id
+                break
+            end
+        end
+    end
+
+    -- Fallback: try license, then char, then steam
+    if not playerIdentifier then
+        for _, id in ipairs(playerIdentifiers) do
+            if string.match(id, "^license:") then
+                playerIdentifier = id
+                break
+            end
+        end
+    end
+
+    if not playerIdentifier then
+        for _, id in ipairs(playerIdentifiers) do
+            if string.match(id, "^char%d+:") then
+                playerIdentifier = id
+                break
+            end
+        end
+    end
+
+    if not playerIdentifier then
+        for _, id in ipairs(playerIdentifiers) do
+            if string.match(id, "^steam:") then
+                playerIdentifier = id
+                break
+            end
+        end
     end
 
     if not playerIdentifier then
@@ -61,43 +117,106 @@ TransferVehicleOwnership = function(source, plate)
         return false
     end
 
-    -- Use mk_vehiclekeys/mk_utils export to transfer ownership
-    local transferSuccess = pcall(function()
-        exports[mkResource]:TransferVehicleOwnership(plate, playerIdentifier)
-    end)
-
-    if not transferSuccess then
-        -- Fallback to direct database operations if export doesn't exist
-        if config.DebugVehicleKeys then
-            print(("^3[rk_propad]^7 %s TransferVehicleOwnership export not found, using database fallback"):format(mkResource))
-        end
-
-        -- Try oxmysql first
-        if GetResourceState('oxmysql') == 'started' then
-            local affectedRows = MySQL.query.await(
-                'UPDATE owned_vehicles SET owner = ? WHERE plate = ?',
-                {playerIdentifier, plate}
-            )
-
-            if affectedRows and affectedRows > 0 then
-                print(("^2[rk_propad]^7 Vehicle [%s] ownership transferred to %s"):format(plate, playerIdentifier))
-                return true
-            else
-                if config.DebugVehicleKeys then
-                    print(("^3[rk_propad]^7 No existing ownership found for vehicle [%s], vehicle may not be in database"):format(plate))
-                end
-                return false
-            end
-        else
-            print("^1[rk_propad]^7 No database resource found (oxmysql). Cannot transfer ownership.")
-            return false
-        end
-    else
-        print(("^2[rk_propad]^7 Vehicle [%s] ownership transferred to %s via %s"):format(plate, playerIdentifier, mkResource))
-        return true
+    if config.DebugVehicleKeys then
+        print(("^5[rk_propad]^7 Player identifier: %s"):format(playerIdentifier))
     end
 
-    return false
+    -- Use mk_vehiclekeys ChangeOwner export if vehicle entity is provided
+    local usedChangeOwner = false
+    if vehicleEntity and DoesEntityExist(vehicleEntity) then
+        local changeOwnerSuccess, changeOwnerError = pcall(function()
+            exports["mk_vehiclekeys"]:ChangeOwner(vehicleEntity, source)
+        end)
+
+        if changeOwnerSuccess then
+            print(("^2[rk_propad]^7 Vehicle [%s] ownership changed via mk_vehiclekeys ChangeOwner"):format(plate))
+            usedChangeOwner = true
+            -- DON'T return here - continue to database update!
+        else
+            if config.DebugVehicleKeys then
+                print(("^3[rk_propad]^7 mk_vehiclekeys ChangeOwner failed: %s"):format(tostring(changeOwnerError)))
+            end
+        end
+    end
+
+    -- Fallback: Use mk_vehiclekeys AddKey export if ChangeOwner wasn't used
+    if vehicleEntity and DoesEntityExist(vehicleEntity) and not usedChangeOwner then
+        local addKeySuccess, addKeyError = pcall(function()
+            exports["mk_vehiclekeys"]:AddKey(vehicleEntity, source)
+        end)
+
+        if addKeySuccess then
+            print(("^2[rk_propad]^7 Vehicle [%s] keys given to player %s via mk_vehiclekeys"):format(plate, source))
+            -- Continue to database update
+        else
+            if config.DebugVehicleKeys then
+                print(("^3[rk_propad]^7 mk_vehiclekeys AddKey failed: %s"):format(tostring(addKeyError)))
+            end
+        end
+    end
+
+    -- Database operations (ALWAYS run these!)
+    local transferSuccess = false
+    print(("^5[rk_propad]^7 Starting database operations for vehicle [%s]"):format(plate))
+
+    -- Database operations
+    if GetResourceState('oxmysql') == 'started' then
+            -- First, check if vehicle exists in database
+            local existingVehicle = MySQL.query.await(
+                'SELECT * FROM owned_vehicles WHERE plate = ?',
+                {plate}
+            )
+
+            if existingVehicle and #existingVehicle > 0 then
+                -- Vehicle exists, get the old owner and vehicle data
+                local oldOwner = existingVehicle[1].owner
+                local vehicleData = existingVehicle[1].vehicle or '{}'
+
+                if config.DebugVehicleKeys then
+                    print(("^3[rk_propad]^7 Found existing vehicle [%s] owned by %s"):format(plate, oldOwner))
+                end
+
+                -- Delete old ownership
+                MySQL.query.await('DELETE FROM owned_vehicles WHERE plate = ?', {plate})
+
+                -- Insert with new owner
+                local insertSuccess = MySQL.insert.await(
+                    'INSERT INTO owned_vehicles (owner, plate, vehicle) VALUES (?, ?, ?)',
+                    {playerIdentifier, plate, vehicleData}
+                )
+
+                if insertSuccess then
+                    print(("^2[rk_propad]^7 Database: Vehicle [%s] ownership transferred from %s to %s"):format(plate, oldOwner, playerIdentifier))
+                    transferSuccess = true
+                else
+                    print(("^1[rk_propad]^7 Failed to transfer vehicle [%s] ownership in database"):format(plate))
+                    transferSuccess = false
+                end
+            else
+                -- Vehicle doesn't exist, insert as new
+                if config.DebugVehicleKeys then
+                    print(("^3[rk_propad]^7 Vehicle [%s] not in database, creating new entry"):format(plate))
+                end
+
+                local insertSuccess = MySQL.insert.await(
+                    'INSERT INTO owned_vehicles (owner, plate, vehicle) VALUES (?, ?, ?)',
+                    {playerIdentifier, plate, '{}'}
+                )
+
+                if insertSuccess then
+                    print(("^2[rk_propad]^7 Database: Vehicle [%s] added with owner %s"):format(plate, playerIdentifier))
+                    transferSuccess = true
+                else
+                    print(("^1[rk_propad]^7 Failed to add vehicle [%s] to database"):format(plate))
+                    transferSuccess = false
+                end
+            end
+    else
+        print("^1[rk_propad]^7 No database resource found (oxmysql). Cannot transfer ownership.")
+        transferSuccess = false
+    end
+
+    return transferSuccess
 end
 
 -- Function to delete vehicle from owned_vehicles table
@@ -109,15 +228,15 @@ DeleteVehicleOwnership = function(plate)
         return false
     end
 
-    -- Use mk_vehiclekeys/mk_utils export to remove vehicle
+    -- Use mk_vehiclekeys export to remove vehicle
     local deleteSuccess = pcall(function()
-        exports[mkResource]:RemoveVehicleFromDatabase(plate)
+        exports["mk_vehiclekeys"]:RemoveVehicleFromDatabase(plate)
     end)
 
     if not deleteSuccess then
         -- Fallback to direct database operations if export doesn't exist
         if config.DebugVehicleKeys then
-            print(("^3[rk_propad]^7 %s RemoveVehicleFromDatabase export not found, using database fallback"):format(mkResource))
+            print("^3[rk_propad]^7 mk_vehiclekeys RemoveVehicleFromDatabase export not found, using database fallback")
         end
 
         -- Try oxmysql first
@@ -141,11 +260,12 @@ DeleteVehicleOwnership = function(plate)
             return false
         end
     else
-        print(("^2[rk_propad]^7 Vehicle [%s] deleted from database via %s"):format(plate, mkResource))
+        print(("^2[rk_propad]^7 Vehicle [%s] deleted from database via mk_vehiclekeys"):format(plate))
         return true
     end
 
     return false
 end
 
-print(("^2[rk_propad]^7 %s server bridge loaded successfully"):format(mkResource))
+    print("^2[rk_propad]^7 mk_vehiclekeys server bridge loaded successfully")
+end)

@@ -199,9 +199,9 @@ return {
             title = title,
             description = message,
             type = type or 'info',
-            position = 'top-right',
+            position = 'top',
         })
     end,
 
-    DebugVehicleKeys = false, -- Enable/disable debug messages for vehicle keys
+    DebugVehicleKeys = true, -- Enable/disable debug messages for vehicle keys
 }

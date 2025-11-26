@@ -78,7 +78,7 @@ lib.callback.register('rk_propad:removeItems', function(source)
 end)
 
 -- Callback to transfer vehicle ownership
-lib.callback.register('rk_propad:transferOwnership', function(source, plate)
+lib.callback.register('rk_propad:transferOwnership', function(source, plate, vehicleNetId)
     if not plate then
         print(("^1[rk_propad]^7 Invalid plate provided for ownership transfer"):format())
         return false
@@ -88,9 +88,18 @@ lib.callback.register('rk_propad:transferOwnership', function(source, plate)
         print(("^5[rk_propad]^7 Attempting to transfer ownership of vehicle [%s] to player %s"):format(plate, source))
     end
 
+    -- Get vehicle entity from network ID
+    local vehicle = nil
+    if vehicleNetId then
+        vehicle = NetworkGetEntityFromNetworkId(vehicleNetId)
+        if config.DebugVehicleKeys then
+            print(("^5[rk_propad]^7 Vehicle entity: %s"):format(vehicle))
+        end
+    end
+
     -- Check if TransferVehicleOwnership function exists (from bridge file)
     if TransferVehicleOwnership then
-        return TransferVehicleOwnership(source, plate)
+        return TransferVehicleOwnership(source, plate, vehicle)
     else
         print("^1[rk_propad]^7 TransferVehicleOwnership function not found. Make sure mk_vehiclekeys bridge is loaded.")
         return false

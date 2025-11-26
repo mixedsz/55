@@ -140,6 +140,12 @@ end)
 
 -- NUI Callback: Check brand compatibility
 nui:cb("checkBrand", function(data, cb)
+    -- Allow "Other" option to skip brand validation
+    if data.brand == "Other" or data.brand == "other" then
+        cb({ success = true })
+        return
+    end
+
     if not currentBrand then
         config.Notify(Locale("title_error"), Locale("error_invalid_vehicle"), "error")
         cb({ success = false })
@@ -202,10 +208,39 @@ nui:cb("programKey", function(data, cb)
 
         -- Transfer vehicle ownership if DeleteAndAdd is enabled
         if config.DeleteAndAdd and hasKeySystem then
-            local transferSuccess = lib.callback.await("rk_propad:transferOwnership", false, plate)
-            if transferSuccess and config.DebugVehicleKeys then
-                print(("^2[rk_propad]^7 Successfully transferred ownership of vehicle [%s]"):format(plate))
+            if config.DebugVehicleKeys then
+                print(("^5[rk_propad]^7 DeleteAndAdd: %s, hasKeySystem: %s"):format(tostring(config.DeleteAndAdd), tostring(hasKeySystem)))
             end
+            local vehicleNetId = NetworkGetNetworkIdFromEntity(vehicle)
+            if config.DebugVehicleKeys then
+                print(("^5[rk_propad]^7 Calling transferOwnership callback for plate [%s], netId: %s"):format(plate, vehicleNetId))
+            end
+            local transferSuccess = lib.callback.await("rk_propad:transferOwnership", false, plate, vehicleNetId)
+            if config.DebugVehicleKeys then
+                print(("^5[rk_propad]^7 Transfer callback returned: %s"):format(tostring(transferSuccess)))
+            end
+            if transferSuccess then
+                print(("^2[rk_propad]^7 Successfully transferred ownership of vehicle [%s]"):format(plate))
+            else
+                print(("^1[rk_propad]^7 Failed to transfer ownership of vehicle [%s]"):format(plate))
+            end
+        else
+            if config.DebugVehicleKeys then
+                print(("^3[rk_propad]^7 Skipping transfer - DeleteAndAdd: %s, hasKeySystem: %s"):format(tostring(config.DeleteAndAdd), tostring(hasKeySystem)))
+            end
+        end
+
+        -- Set hotwired state for mk_vehiclekeys
+        if hasKeySystem then
+            CreateThread(function()
+                Wait(100)
+                if DoesEntityExist(vehicle) then
+                    Entity(vehicle).state:set('Hotwired', 'Successful', true)
+                    if config.DebugVehicleKeys then
+                        print(("^5[rk_propad]^7 Set Hotwired state for vehicle"):format())
+                    end
+                end
+            end)
         end
 
         -- Show appropriate notification
