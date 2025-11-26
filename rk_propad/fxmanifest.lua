@@ -42,7 +42,6 @@ client_exports {
 
 dependencies {
     'ox_lib',
-    '/optional:mk_vehiclekeys',
 }
 
 lua54 'yes'

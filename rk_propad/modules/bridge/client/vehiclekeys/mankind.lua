@@ -1,14 +1,27 @@
 ---@diagnostic disable: duplicate-set-field, lowercase-global
 
-if GetResourceState('mk_vehiclekeys') ~= 'started' then
-    local state = GetResourceState('mk_vehiclekeys')
-    if state ~= 'missing' then
-        print(("^3[rk_propad]^7 mk_vehiclekeys found but not started. Current state: %s"):format(state))
-    end
-    return
-end
+-- Wait for mk_vehiclekeys to be available (up to 5 seconds)
+CreateThread(function()
+    local maxAttempts = 50
+    local attempt = 0
 
-print("^2[rk_propad]^7 Loading mk_vehiclekeys bridge...")
+    while attempt < maxAttempts do
+        if GetResourceState('mk_vehiclekeys') == 'started' then
+            break
+        end
+        attempt = attempt + 1
+        Wait(100)
+    end
+
+    if GetResourceState('mk_vehiclekeys') ~= 'started' then
+        local state = GetResourceState('mk_vehiclekeys')
+        if state ~= 'missing' then
+            print(("^3[rk_propad]^7 mk_vehiclekeys found but not started after 5s. Current state: %s"):format(state))
+        end
+        return
+    end
+
+    print("^2[rk_propad]^7 Loading mk_vehiclekeys bridge...")
 
 GiveVehKeys = function(vehicle)
     if not vehicle or vehicle == 0 then
@@ -65,4 +78,5 @@ RemoveVehKeys = function(vehicle)
     return true
 end
 
-print("^2[rk_propad]^7 mk_vehiclekeys bridge loaded successfully")
+    print("^2[rk_propad]^7 mk_vehiclekeys bridge loaded successfully")
+end)
