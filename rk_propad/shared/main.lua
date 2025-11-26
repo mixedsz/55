@@ -199,7 +199,7 @@ return {
             title = title,
             description = message,
             type = type or 'info',
-            position = 'top-right',
+            position = 'top',
         })
     end,
 

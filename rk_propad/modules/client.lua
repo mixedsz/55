@@ -140,6 +140,12 @@ end)
 
 -- NUI Callback: Check brand compatibility
 nui:cb("checkBrand", function(data, cb)
+    -- Allow "Other" option to skip brand validation
+    if data.brand == "Other" or data.brand == "other" then
+        cb({ success = true })
+        return
+    end
+
     if not currentBrand then
         config.Notify(Locale("title_error"), Locale("error_invalid_vehicle"), "error")
         cb({ success = false })

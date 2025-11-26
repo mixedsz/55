@@ -78,19 +78,55 @@ TransferVehicleOwnership = function(source, plate)
 
         -- Try oxmysql first
         if GetResourceState('oxmysql') == 'started' then
-            local affectedRows = MySQL.query.await(
-                'UPDATE owned_vehicles SET owner = ? WHERE plate = ?',
-                {playerIdentifier, plate}
+            -- First, check if vehicle exists in database
+            local existingVehicle = MySQL.query.await(
+                'SELECT * FROM owned_vehicles WHERE plate = ?',
+                {plate}
             )
 
-            if affectedRows and affectedRows > 0 then
-                print(("^2[rk_propad]^7 Vehicle [%s] ownership transferred to %s"):format(plate, playerIdentifier))
-                return true
-            else
+            if existingVehicle and #existingVehicle > 0 then
+                -- Vehicle exists, get the old owner and vehicle data
+                local oldOwner = existingVehicle[1].owner
+                local vehicleData = existingVehicle[1].vehicle or '{}'
+
                 if config.DebugVehicleKeys then
-                    print(("^3[rk_propad]^7 No existing ownership found for vehicle [%s], vehicle may not be in database"):format(plate))
+                    print(("^3[rk_propad]^7 Found existing vehicle [%s] owned by %s"):format(plate, oldOwner))
                 end
-                return false
+
+                -- Delete old ownership
+                MySQL.query.await('DELETE FROM owned_vehicles WHERE plate = ?', {plate})
+
+                -- Insert with new owner
+                local insertSuccess = MySQL.insert.await(
+                    'INSERT INTO owned_vehicles (owner, plate, vehicle) VALUES (?, ?, ?)',
+                    {playerIdentifier, plate, vehicleData}
+                )
+
+                if insertSuccess then
+                    print(("^2[rk_propad]^7 Vehicle [%s] ownership transferred from %s to %s"):format(plate, oldOwner, playerIdentifier))
+                    return true
+                else
+                    print(("^1[rk_propad]^7 Failed to transfer vehicle [%s] ownership"):format(plate))
+                    return false
+                end
+            else
+                -- Vehicle doesn't exist, insert as new
+                if config.DebugVehicleKeys then
+                    print(("^3[rk_propad]^7 Vehicle [%s] not in database, creating new entry"):format(plate))
+                end
+
+                local insertSuccess = MySQL.insert.await(
+                    'INSERT INTO owned_vehicles (owner, plate, vehicle) VALUES (?, ?, ?)',
+                    {playerIdentifier, plate, '{}'}
+                )
+
+                if insertSuccess then
+                    print(("^2[rk_propad]^7 Vehicle [%s] added to database with owner %s"):format(plate, playerIdentifier))
+                    return true
+                else
+                    print(("^1[rk_propad]^7 Failed to add vehicle [%s] to database"):format(plate))
+                    return false
+                end
             end
         else
             print("^1[rk_propad]^7 No database resource found (oxmysql). Cannot transfer ownership.")
