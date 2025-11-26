@@ -65,14 +65,30 @@ TransferVehicleOwnership = function(source, plate, vehicleEntity)
     local playerIdentifier = nil
     local playerIdentifiers = GetPlayerIdentifiers(source)
 
-    -- If we know the identifier type, look for that specific type
+    -- If we detected char identifier type, search for char identifier FIRST
     if identifierType == "char" then
-        -- For ESX character identifiers, try to get from framework
-        local success, charId = pcall(function()
-            return exports["es_extended"]:getPlayerFromId(source).identifier
-        end)
-        if success and charId then
-            playerIdentifier = charId
+        -- Search player identifiers directly for char pattern
+        for _, id in ipairs(playerIdentifiers) do
+            if string.match(id, "^char%d+:") then
+                playerIdentifier = id
+                if config.DebugVehicleKeys then
+                    print(("^5[rk_propad]^7 Found char identifier: %s"):format(playerIdentifier))
+                end
+                break
+            end
+        end
+
+        -- If not found, try ESX export as fallback
+        if not playerIdentifier and ESX then
+            local success, xPlayer = pcall(function()
+                return ESX.GetPlayerFromId(source)
+            end)
+            if success and xPlayer and xPlayer.identifier then
+                playerIdentifier = xPlayer.identifier
+                if config.DebugVehicleKeys then
+                    print(("^5[rk_propad]^7 Got char ID from ESX: %s"):format(playerIdentifier))
+                end
+            end
         end
     elseif identifierType then
         -- Look for the specific identifier type
@@ -84,17 +100,12 @@ TransferVehicleOwnership = function(source, plate, vehicleEntity)
         end
     end
 
-    -- Fallback: try license, then char, then steam
+    -- Fallback ONLY if no identifier found yet
     if not playerIdentifier then
-        for _, id in ipairs(playerIdentifiers) do
-            if string.match(id, "^license:") then
-                playerIdentifier = id
-                break
-            end
+        if config.DebugVehicleKeys then
+            print("^3[rk_propad]^7 Identifier type mismatch or not found, using fallback")
         end
-    end
-
-    if not playerIdentifier then
+        -- Try char first (for ESX)
         for _, id in ipairs(playerIdentifiers) do
             if string.match(id, "^char%d+:") then
                 playerIdentifier = id
@@ -104,6 +115,17 @@ TransferVehicleOwnership = function(source, plate, vehicleEntity)
     end
 
     if not playerIdentifier then
+        -- Then try license
+        for _, id in ipairs(playerIdentifiers) do
+            if string.match(id, "^license:") then
+                playerIdentifier = id
+                break
+            end
+        end
+    end
+
+    if not playerIdentifier then
+        -- Finally try steam
         for _, id in ipairs(playerIdentifiers) do
             if string.match(id, "^steam:") then
                 playerIdentifier = id
