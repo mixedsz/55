@@ -75,19 +75,29 @@ end
 local function DetectVehicleKeySystem()
     local systems = {
         { name = "mk_vehiclekeys", resource = "mk_vehiclekeys" },
+        { name = "mk_utils", resource = "mk_utils" },
         { name = "wasabi_carlock", resource = "wasabi_carlock" },
         { name = "qs-vehiclekeys", resource = "qs-vehiclekeys" },
         { name = "MrNewbVehicleKeys", resource = "MrNewbVehicleKeys" }
     }
-    
+
     for _, system in ipairs(systems) do
         if GetResourceState(system.resource) == "started" then
             print(("^2[%s]^7 Detected vehicle key system: ^5%s^7"):format(SCRIPT_NAME, system.name))
             return system.name
         end
     end
-    
-    print(("^3[%s]^7 No vehicle key system detected - Using auto-start mode"):format(SCRIPT_NAME))
+
+    -- Additional diagnostic logging
+    print(("^3[%s]^7 No vehicle key system detected - Checking resource states..."):format(SCRIPT_NAME))
+    for _, system in ipairs(systems) do
+        local state = GetResourceState(system.resource)
+        if state ~= "missing" then
+            print(("^3[%s]^7   %s: ^3%s^7 (not started)"):format(SCRIPT_NAME, system.resource, state))
+        end
+    end
+
+    print(("^3[%s]^7 Using auto-start mode"):format(SCRIPT_NAME))
     return "auto-start"
 end
 

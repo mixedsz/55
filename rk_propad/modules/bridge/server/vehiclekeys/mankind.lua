@@ -1,8 +1,23 @@
 ---@diagnostic disable: duplicate-set-field, lowercase-global
 
-if GetResourceState('mk_vehiclekeys') ~= 'started' then return end
+-- Check for mk_vehiclekeys or mk_utils (some systems use mk_utils as the main resource)
+local mkResource = nil
+if GetResourceState('mk_vehiclekeys') == 'started' then
+    mkResource = 'mk_vehiclekeys'
+elseif GetResourceState('mk_utils') == 'started' then
+    mkResource = 'mk_utils'
+end
 
-print("^2[rk_propad]^7 Loading mk_vehiclekeys server bridge...")
+if not mkResource then
+    if GetResourceState('mk_vehiclekeys') ~= 'missing' or GetResourceState('mk_utils') ~= 'missing' then
+        print("^3[rk_propad]^7 mk_vehiclekeys/mk_utils found but not started. Current states:")
+        print("^3[rk_propad]^7   mk_vehiclekeys: " .. GetResourceState('mk_vehiclekeys'))
+        print("^3[rk_propad]^7   mk_utils: " .. GetResourceState('mk_utils'))
+    end
+    return
+end
+
+print(("^2[rk_propad]^7 Loading %s server bridge..."):format(mkResource))
 
 local config = require("shared.main")
 
@@ -19,8 +34,8 @@ TransferVehicleOwnership = function(source, plate)
 
     -- Get player identifier (support common frameworks)
     local success, identifier = pcall(function()
-        -- Try getting identifier from mk_vehiclekeys export first
-        local mkIdentifier = exports["mk_vehiclekeys"]:GetPlayerIdentifier(source)
+        -- Try getting identifier from mk_vehiclekeys/mk_utils export first
+        local mkIdentifier = exports[mkResource]:GetPlayerIdentifier(source)
         if mkIdentifier then
             return mkIdentifier
         end
@@ -46,15 +61,15 @@ TransferVehicleOwnership = function(source, plate)
         return false
     end
 
-    -- Use mk_vehiclekeys export to transfer ownership
+    -- Use mk_vehiclekeys/mk_utils export to transfer ownership
     local transferSuccess = pcall(function()
-        exports["mk_vehiclekeys"]:TransferVehicleOwnership(plate, playerIdentifier)
+        exports[mkResource]:TransferVehicleOwnership(plate, playerIdentifier)
     end)
 
     if not transferSuccess then
         -- Fallback to direct database operations if export doesn't exist
         if config.DebugVehicleKeys then
-            print("^3[rk_propad]^7 mk_vehiclekeys TransferVehicleOwnership export not found, using database fallback")
+            print(("^3[rk_propad]^7 %s TransferVehicleOwnership export not found, using database fallback"):format(mkResource))
         end
 
         -- Try oxmysql first
@@ -78,7 +93,7 @@ TransferVehicleOwnership = function(source, plate)
             return false
         end
     else
-        print(("^2[rk_propad]^7 Vehicle [%s] ownership transferred to %s via mk_vehiclekeys"):format(plate, playerIdentifier))
+        print(("^2[rk_propad]^7 Vehicle [%s] ownership transferred to %s via %s"):format(plate, playerIdentifier, mkResource))
         return true
     end
 
@@ -94,15 +109,15 @@ DeleteVehicleOwnership = function(plate)
         return false
     end
 
-    -- Use mk_vehiclekeys export to remove vehicle
+    -- Use mk_vehiclekeys/mk_utils export to remove vehicle
     local deleteSuccess = pcall(function()
-        exports["mk_vehiclekeys"]:RemoveVehicleFromDatabase(plate)
+        exports[mkResource]:RemoveVehicleFromDatabase(plate)
     end)
 
     if not deleteSuccess then
         -- Fallback to direct database operations if export doesn't exist
         if config.DebugVehicleKeys then
-            print("^3[rk_propad]^7 mk_vehiclekeys RemoveVehicleFromDatabase export not found, using database fallback")
+            print(("^3[rk_propad]^7 %s RemoveVehicleFromDatabase export not found, using database fallback"):format(mkResource))
         end
 
         -- Try oxmysql first
@@ -126,11 +141,11 @@ DeleteVehicleOwnership = function(plate)
             return false
         end
     else
-        print(("^2[rk_propad]^7 Vehicle [%s] deleted from database via mk_vehiclekeys"):format(plate))
+        print(("^2[rk_propad]^7 Vehicle [%s] deleted from database via %s"):format(plate, mkResource))
         return true
     end
 
     return false
 end
 
-print("^2[rk_propad]^7 mk_vehiclekeys server bridge loaded successfully")
+print(("^2[rk_propad]^7 %s server bridge loaded successfully"):format(mkResource))
