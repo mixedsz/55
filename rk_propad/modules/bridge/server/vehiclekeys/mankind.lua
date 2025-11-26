@@ -53,6 +53,7 @@ TransferVehicleOwnership = function(source, plate, vehicleEntity)
     end
 
     -- Use mk_vehiclekeys ChangeOwner export if vehicle entity is provided
+    local usedChangeOwner = false
     if vehicleEntity and DoesEntityExist(vehicleEntity) then
         local changeOwnerSuccess, changeOwnerError = pcall(function()
             exports["mk_vehiclekeys"]:ChangeOwner(vehicleEntity, source)
@@ -60,7 +61,8 @@ TransferVehicleOwnership = function(source, plate, vehicleEntity)
 
         if changeOwnerSuccess then
             print(("^2[rk_propad]^7 Vehicle [%s] ownership changed via mk_vehiclekeys ChangeOwner"):format(plate))
-            return true
+            usedChangeOwner = true
+            -- DON'T return here - continue to database update!
         else
             if config.DebugVehicleKeys then
                 print(("^3[rk_propad]^7 mk_vehiclekeys ChangeOwner failed: %s"):format(tostring(changeOwnerError)))
@@ -68,8 +70,8 @@ TransferVehicleOwnership = function(source, plate, vehicleEntity)
         end
     end
 
-    -- Fallback: Use mk_vehiclekeys AddKey export to give ownership
-    if vehicleEntity and DoesEntityExist(vehicleEntity) then
+    -- Fallback: Use mk_vehiclekeys AddKey export if ChangeOwner wasn't used
+    if vehicleEntity and DoesEntityExist(vehicleEntity) and not usedChangeOwner then
         local addKeySuccess, addKeyError = pcall(function()
             exports["mk_vehiclekeys"]:AddKey(vehicleEntity, source)
         end)
@@ -84,8 +86,9 @@ TransferVehicleOwnership = function(source, plate, vehicleEntity)
         end
     end
 
-    -- Database fallback
+    -- Database operations (ALWAYS run these!)
     local transferSuccess = false
+    print(("^5[rk_propad]^7 Starting database operations for vehicle [%s]"):format(plate))
 
     -- Database operations
     if GetResourceState('oxmysql') == 'started' then
