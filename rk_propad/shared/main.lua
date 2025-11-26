@@ -203,5 +203,5 @@ return {
         })
     end,
 
-    DebugVehicleKeys = false, -- Enable/disable debug messages for vehicle keys
+    DebugVehicleKeys = true, -- Enable/disable debug messages for vehicle keys
 }

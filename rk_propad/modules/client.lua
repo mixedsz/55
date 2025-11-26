@@ -208,10 +208,25 @@ nui:cb("programKey", function(data, cb)
 
         -- Transfer vehicle ownership if DeleteAndAdd is enabled
         if config.DeleteAndAdd and hasKeySystem then
+            if config.DebugVehicleKeys then
+                print(("^5[rk_propad]^7 DeleteAndAdd: %s, hasKeySystem: %s"):format(tostring(config.DeleteAndAdd), tostring(hasKeySystem)))
+            end
             local vehicleNetId = NetworkGetNetworkIdFromEntity(vehicle)
+            if config.DebugVehicleKeys then
+                print(("^5[rk_propad]^7 Calling transferOwnership callback for plate [%s], netId: %s"):format(plate, vehicleNetId))
+            end
             local transferSuccess = lib.callback.await("rk_propad:transferOwnership", false, plate, vehicleNetId)
-            if transferSuccess and config.DebugVehicleKeys then
+            if config.DebugVehicleKeys then
+                print(("^5[rk_propad]^7 Transfer callback returned: %s"):format(tostring(transferSuccess)))
+            end
+            if transferSuccess then
                 print(("^2[rk_propad]^7 Successfully transferred ownership of vehicle [%s]"):format(plate))
+            else
+                print(("^1[rk_propad]^7 Failed to transfer ownership of vehicle [%s]"):format(plate))
+            end
+        else
+            if config.DebugVehicleKeys then
+                print(("^3[rk_propad]^7 Skipping transfer - DeleteAndAdd: %s, hasKeySystem: %s"):format(tostring(config.DeleteAndAdd), tostring(hasKeySystem)))
             end
         end
 
