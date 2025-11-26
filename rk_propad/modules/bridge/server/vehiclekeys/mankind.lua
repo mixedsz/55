@@ -58,6 +58,23 @@ TransferVehicleOwnership = function(source, plate, vehicleEntity)
             if config.DebugVehicleKeys then
                 print(("^5[rk_propad]^7 Detected identifier type from old owner: %s"):format(identifierType or "unknown"))
             end
+        else
+            -- No existing vehicle - check if ESX is running and default to char
+            if ESX or GetResourceState('es_extended') == 'started' then
+                identifierType = "char"
+                if config.DebugVehicleKeys then
+                    print("^5[rk_propad]^7 No existing vehicle, but ESX detected - defaulting to char identifier type")
+                end
+            else
+                -- Check if any user in database uses char identifiers
+                local charCheck = MySQL.query.await('SELECT identifier FROM users WHERE identifier LIKE "char%:" LIMIT 1')
+                if charCheck and #charCheck > 0 then
+                    identifierType = "char"
+                    if config.DebugVehicleKeys then
+                        print("^5[rk_propad]^7 No existing vehicle, but char identifiers found in database - using char type")
+                    end
+                end
+            end
         end
     end
 
